@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import {
-  loadInitialAppState,
-  saveAppState
+  DEFAULT_HABITS,
+  checkProfileStreak,
+  fetchServerDb,
+  saveServerDb,
+  loadInitialDbFromLocalStorage,
+  saveDbToLocalStorage
 } from './utils/storage';
 import ProgressHeader from './components/ProgressHeader';
 import HabitCard from './components/HabitCard';
@@ -12,18 +16,69 @@ import Celebration from './components/Celebration';
 import './App.css';
 
 export default function App() {
-  const [state, setState] = useState(() => loadInitialAppState());
+  const [db, setDb] = useState(null);
+  const [isUsingServer, setIsUsingServer] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [habitToEdit, setHabitToEdit] = useState(null);
   const [currentView, setView] = useState('dashboard');
   const [celebrate, setCelebrate] = useState(false);
+  
+  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
 
-  // Sync state to local storage when state changes
+  // Initialize DB asynchronously
   useEffect(() => {
-    if (state) {
-      saveAppState(state);
+    const initDb = async () => {
+      // 1. Check if we already have local storage edits
+      const localData = localStorage.getItem('good_habits_db');
+      if (localData) {
+        const loadedDb = loadInitialDbFromLocalStorage();
+        setIsUsingServer(false);
+        setDb(loadedDb);
+        return;
+      }
+
+      // 2. No local storage, try loading from server API or static db.json seed
+      const serverResult = await fetchServerDb();
+      let loadedDb;
+      
+      if (serverResult) {
+        loadedDb = serverResult.db;
+        setIsUsingServer(serverResult.isWritable);
+        // If it's a static fetch (not writable API), populate localStorage with it
+        if (!serverResult.isWritable) {
+          saveDbToLocalStorage(loadedDb);
+        }
+      } else {
+        loadedDb = loadInitialDbFromLocalStorage();
+        setIsUsingServer(false);
+      }
+      
+      const current = loadedDb.currentProfile || 'default';
+      if (!loadedDb.profiles[current]) {
+        loadedDb.profiles[current] = {
+          habits: [...DEFAULT_HABITS],
+          dailyTarget: 35,
+          history: {},
+          streak: 0,
+          lastActive: ''
+        };
+      }
+      loadedDb.profiles[current] = checkProfileStreak(loadedDb.profiles[current]);
+      setDb(loadedDb);
+    };
+    initDb();
+  }, []);
+
+  // Save DB when changed
+  useEffect(() => {
+    if (!db) return;
+    if (isUsingServer) {
+      saveServerDb(db);
+    } else {
+      saveDbToLocalStorage(db);
     }
-  }, [state]);
+  }, [db, isUsingServer]);
 
   // Handle celebration timeout
   useEffect(() => {
@@ -35,7 +90,7 @@ export default function App() {
     }
   }, [celebrate]);
 
-  if (!state) {
+  if (!db) {
     return (
       <div className="app-loading flex-center">
         <div className="loader"></div>
@@ -43,7 +98,78 @@ export default function App() {
     );
   }
 
-  const { habits, dailyTarget, history, streak, todayStr } = state;
+  const activeProfile = db.currentProfile || 'default';
+  const state = db.profiles[activeProfile];
+  const { habits, dailyTarget, history, streak, lastActive } = state;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const updateActiveState = (newState) => {
+    setDb(prevDb => ({
+      ...prevDb,
+      profiles: {
+        ...prevDb.profiles,
+        [activeProfile]: {
+          ...prevDb.profiles[activeProfile],
+          ...newState
+        }
+      }
+    }));
+  };
+
+  const handleSwitchProfile = (profileName) => {
+    if (!db.profiles[profileName]) return;
+    setDb(prevDb => {
+      const checkedState = checkProfileStreak(prevDb.profiles[profileName]);
+      return {
+        ...prevDb,
+        currentProfile: profileName,
+        profiles: {
+          ...prevDb.profiles,
+          [profileName]: checkedState
+        }
+      };
+    });
+  };
+
+  const handleCreateProfile = (profileName) => {
+    if (!profileName.trim()) return;
+    const name = profileName.trim().toLowerCase();
+    if (db.profiles[name]) {
+      alert('Profile already exists!');
+      return;
+    }
+    setDb(prevDb => {
+      const newProfile = {
+        habits: [...DEFAULT_HABITS],
+        dailyTarget: 35,
+        history: {},
+        streak: 0,
+        lastActive: ''
+      };
+      return {
+        ...prevDb,
+        currentProfile: name,
+        profiles: {
+          ...prevDb.profiles,
+          [name]: newProfile
+        }
+      };
+    });
+  };
+
+  const handleDeleteProfile = (profileName) => {
+    if (profileName === 'default') return;
+    setDb(prevDb => {
+      const updatedProfiles = { ...prevDb.profiles };
+      delete updatedProfiles[profileName];
+      const nextProfile = prevDb.currentProfile === profileName ? 'default' : prevDb.currentProfile;
+      return {
+        ...prevDb,
+        currentProfile: nextProfile,
+        profiles: updatedProfiles
+      };
+    });
+  };
 
   // Helper to compute daily score for a list of checked habits
   const calculateScore = (loggedHabitIds) => {
@@ -58,28 +184,69 @@ export default function App() {
   const todayLoggedHabits = todayLog.loggedHabits;
   const todayScore = calculateScore(todayLoggedHabits);
 
-  // Handle habit check / uncheck toggle
-  const handleToggleHabit = (habitId) => {
-    let newLogged = [...todayLoggedHabits];
-    const isLogging = !newLogged.includes(habitId);
+  // Drag and Drop Handlers
+  const handleDragStart = (e, index) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index);
+  };
 
-    if (isLogging) {
-      newLogged.push(habitId);
-    } else {
-      newLogged = newLogged.filter(id => id !== habitId);
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedIndex === index) return;
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e, targetIndex) => {
+    e.preventDefault();
+    const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+
+    if (sourceIndex === targetIndex || isNaN(sourceIndex)) return;
+
+    const completedHabits = habits.filter(h => todayLoggedHabits.includes(h.id));
+    const uncompletedHabits = habits.filter(h => !todayLoggedHabits.includes(h.id));
+    const displayHabits = [...completedHabits, ...uncompletedHabits];
+
+    const sourceHabit = displayHabits[sourceIndex];
+    const targetHabit = displayHabits[targetIndex];
+
+    const isSourceCompleted = todayLoggedHabits.includes(sourceHabit.id);
+    const isTargetCompleted = todayLoggedHabits.includes(targetHabit.id);
+
+    let newLogged = [...todayLoggedHabits];
+    
+    if (isSourceCompleted !== isTargetCompleted) {
+      if (isTargetCompleted) {
+        newLogged.push(sourceHabit.id);
+      } else {
+        newLogged = newLogged.filter(id => id !== sourceHabit.id);
+      }
     }
+
+    const reorderedDisplay = [...displayHabits];
+    const [movedItem] = reorderedDisplay.splice(sourceIndex, 1);
+    reorderedDisplay.splice(targetIndex, 0, movedItem);
+
+    const updatedHabits = reorderedDisplay;
 
     const prevScore = todayScore;
     const newScore = calculateScore(newLogged);
-
-    // Check if target has just been met in this toggle action
     const crossedTargetMet = prevScore < dailyTarget && newScore >= dailyTarget;
 
-    // Recalculate streak
-    let newStreak;
-    let newLastActive = state.lastActive;
+    let newStreak = streak;
+    let newLastActive = lastActive;
 
-    // Check yesterday's date
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -96,22 +263,15 @@ export default function App() {
 
     if (newScore >= dailyTarget) {
       newLastActive = todayStr;
-      // If today is now met:
-      // If we met yesterday, streak = yesterday's streak + 1. Otherwise streak = 1
       if (metYesterday) {
-        // Find yesterday's streak or default to max of current streak - 1
-        newStreak = Math.max(1, streak); // Ensure streak is active
+        newStreak = Math.max(1, streak);
       } else {
         newStreak = 1;
       }
-      
-      // If we just crossed the line, trigger celebration particles!
       if (crossedTargetMet) {
         setCelebrate(true);
       }
     } else {
-      // If today is now unmet:
-      // If yesterday was met, streak resets to yesterday's streak (which is newStreak - 1, or we just fallback to yesterday's streak)
       if (metYesterday) {
         newStreak = Math.max(0, streak - 1);
       } else {
@@ -119,8 +279,71 @@ export default function App() {
       }
     }
 
-    setState({
-      ...state,
+    updateActiveState({
+      habits: updatedHabits,
+      streak: newStreak,
+      lastActive: newLastActive,
+      history: {
+        ...history,
+        [todayStr]: {
+          loggedHabits: newLogged,
+          target: dailyTarget
+        }
+      }
+    });
+  };
+
+  // Handle habit check / uncheck toggle
+  const handleToggleHabit = (habitId) => {
+    let newLogged = [...todayLoggedHabits];
+    const isLogging = !newLogged.includes(habitId);
+
+    if (isLogging) {
+      newLogged.push(habitId);
+    } else {
+      newLogged = newLogged.filter(id => id !== habitId);
+    }
+
+    const prevScore = todayScore;
+    const newScore = calculateScore(newLogged);
+    const crossedTargetMet = prevScore < dailyTarget && newScore >= dailyTarget;
+
+    let newStreak;
+    let newLastActive = lastActive;
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterdayLog = history[yesterdayStr];
+
+    const yesterdayScore = yesterdayLog
+      ? yesterdayLog.loggedHabits.reduce((sum, hId) => {
+          const h = habits.find(habit => habit.id === hId);
+          return sum + (h ? h.points : 0);
+        }, 0)
+      : 0;
+    const yesterdayTarget = yesterdayLog ? yesterdayLog.target : dailyTarget;
+    const metYesterday = yesterdayLog && yesterdayScore >= yesterdayTarget;
+
+    if (newScore >= dailyTarget) {
+      newLastActive = todayStr;
+      if (metYesterday) {
+        newStreak = Math.max(1, streak);
+      } else {
+        newStreak = 1;
+      }
+      if (crossedTargetMet) {
+        setCelebrate(true);
+      }
+    } else {
+      if (metYesterday) {
+        newStreak = Math.max(0, streak - 1);
+      } else {
+        newStreak = 0;
+      }
+    }
+
+    updateActiveState({
       streak: newStreak,
       lastActive: newLastActive,
       history: {
@@ -144,8 +367,7 @@ export default function App() {
       updatedHabits = [...habits, newHabit];
     }
 
-    setState({
-      ...state,
+    updateActiveState({
       habits: updatedHabits
     });
   };
@@ -154,7 +376,6 @@ export default function App() {
   const handleDeleteHabit = (habitId) => {
     const updatedHabits = habits.filter(h => h.id !== habitId);
     
-    // Clean up from today's active logs if logged
     const cleanHistory = { ...history };
     Object.keys(cleanHistory).forEach(date => {
       cleanHistory[date] = {
@@ -163,8 +384,7 @@ export default function App() {
       };
     });
 
-    setState({
-      ...state,
+    updateActiveState({
       habits: updatedHabits,
       history: cleanHistory
     });
@@ -172,7 +392,6 @@ export default function App() {
 
   // Set new daily target score
   const handleSaveTarget = (newTarget) => {
-    // Check if new target makes today's score cross the goal threshold
     const goalMetWithNewTarget = todayScore >= newTarget;
     const goalWasMetBefore = todayScore >= dailyTarget;
     
@@ -184,8 +403,7 @@ export default function App() {
       newStreak = Math.max(0, streak - 1);
     }
 
-    setState({
-      ...state,
+    updateActiveState({
       dailyTarget: newTarget,
       streak: newStreak,
       history: {
@@ -208,6 +426,10 @@ export default function App() {
     setIsManageOpen(true);
   };
 
+  const completedHabits = habits.filter(h => todayLoggedHabits.includes(h.id));
+  const uncompletedHabits = habits.filter(h => !todayLoggedHabits.includes(h.id));
+  const displayHabits = [...completedHabits, ...uncompletedHabits];
+
   return (
     <div className="app-container">
       <Celebration active={celebrate} />
@@ -221,13 +443,16 @@ export default function App() {
           onOpenAnalytics={() => setView('analytics')}
           currentView={currentView}
           setView={setView}
+          profiles={Object.keys(db.profiles)}
+          currentProfile={activeProfile}
+          onSwitchProfile={handleSwitchProfile}
         />
 
         {currentView === 'dashboard' ? (
           <main className="dashboard-view fade-in">
             <div className="section-header">
               <h2 className="section-title">Today's Habits</h2>
-              <p className="section-subtitle">Tap a card to mark it complete</p>
+              <p className="section-subtitle">Grip handle to rearrange. Tap card to toggle status.</p>
             </div>
 
             <div className="habits-grid">
@@ -240,14 +465,24 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                habits.map(habit => (
-                  <HabitCard
+                displayHabits.map((habit, index) => (
+                  <div
                     key={habit.id}
-                    habit={habit}
-                    isCompleted={todayLoggedHabits.includes(habit.id)}
-                    onToggle={() => handleToggleHabit(habit.id)}
-                    onEdit={handleOpenEdit}
-                  />
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragLeave={handleDragLeave}
+                    onDragEnd={handleDragEnd}
+                    onDrop={(e) => handleDrop(e, index)}
+                    className={`draggable-wrapper ${draggedIndex === index ? 'dragging' : ''} ${dragOverIndex === index ? 'drag-over' : ''}`}
+                  >
+                    <HabitCard
+                      habit={habit}
+                      isCompleted={todayLoggedHabits.includes(habit.id)}
+                      onToggle={() => handleToggleHabit(habit.id)}
+                      onEdit={handleOpenEdit}
+                    />
+                  </div>
                 ))
               )}
             </div>
@@ -284,6 +519,11 @@ export default function App() {
           onDeleteHabit={handleDeleteHabit}
           dailyTarget={dailyTarget}
           onSaveTarget={handleSaveTarget}
+          profiles={Object.keys(db.profiles)}
+          currentProfile={activeProfile}
+          onSwitchProfile={handleSwitchProfile}
+          onCreateProfile={handleCreateProfile}
+          onDeleteProfile={handleDeleteProfile}
         />
       )}
     </div>

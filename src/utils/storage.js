@@ -1,4 +1,4 @@
-const DEFAULT_HABITS = [
+export const DEFAULT_HABITS = [
   { id: '1', text: 'Hydrate (Drink 2L Water)', points: 5, icon: '💧', category: 'Health' },
   { id: '2', text: 'Read 10 Pages of a Book', points: 10, icon: '📚', category: 'Mind' },
   { id: '3', text: '30-minute Workout', points: 15, icon: '💪', category: 'Fitness' },
@@ -6,65 +6,33 @@ const DEFAULT_HABITS = [
   { id: '5', text: 'Eat a Healthy Meal', points: 10, icon: '🥗', category: 'Health' },
 ];
 
-const STORAGE_KEYS = {
-  HABITS: 'good_habits_list',
-  DAILY_TARGET: 'good_habits_target',
-  HISTORY: 'good_habits_history',
-  STREAK: 'good_habits_streak',
-  LAST_ACTIVE: 'good_habits_last_active',
-};
+const STORAGE_KEY = 'good_habits_db';
 
-export const getStoredHabits = () => {
-  const data = localStorage.getItem(STORAGE_KEYS.HABITS);
-  if (!data) {
-    localStorage.setItem(STORAGE_KEYS.HABITS, JSON.stringify(DEFAULT_HABITS));
-    return DEFAULT_HABITS;
-  }
-  return JSON.parse(data);
-};
+export const getDefaultDbStructure = () => ({
+  profiles: {
+    default: {
+      habits: [...DEFAULT_HABITS],
+      dailyTarget: 35,
+      history: {},
+      streak: 0,
+      lastActive: ''
+    }
+  },
+  currentProfile: 'default'
+});
 
-export const saveStoredHabits = (habits) => {
-  localStorage.setItem(STORAGE_KEYS.HABITS, JSON.stringify(habits));
-};
-
-export const getStoredTarget = () => {
-  const target = localStorage.getItem(STORAGE_KEYS.DAILY_TARGET);
-  return target ? parseInt(target, 10) : 35; // Default target
-};
-
-export const saveStoredTarget = (target) => {
-  localStorage.setItem(STORAGE_KEYS.DAILY_TARGET, target.toString());
-};
-
-export const getStoredHistory = () => {
-  const data = localStorage.getItem(STORAGE_KEYS.HISTORY);
-  return data ? JSON.parse(data) : {};
-};
-
-export const saveStoredHistory = (history) => {
-  localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
-};
-
-export const getStoredStreak = () => {
-  const streak = localStorage.getItem(STORAGE_KEYS.STREAK);
-  return streak ? parseInt(streak, 10) : 0;
-};
-
-export const getStoredLastActive = () => {
-  return localStorage.getItem(STORAGE_KEYS.LAST_ACTIVE) || '';
-};
-
-// Main function to load full initial state and compute current streak
-export const loadInitialAppState = () => {
-  const habits = getStoredHabits();
-  const dailyTarget = getStoredTarget();
-  const history = getStoredHistory();
-  let streak = getStoredStreak();
-  let lastActive = getStoredLastActive();
+// Sanity check/update streak for a specific profile state
+export const checkProfileStreak = (profileState) => {
+  if (!profileState) return profileState;
+  
+  const habits = profileState.habits || [];
+  const dailyTarget = profileState.dailyTarget || 35;
+  const history = profileState.history || {};
+  let streak = profileState.streak || 0;
+  let lastActive = profileState.lastActive || '';
   
   const todayStr = new Date().toISOString().split('T')[0];
   
-  // Calculate/Update streaks based on last check-in date
   if (lastActive && lastActive !== todayStr) {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -90,21 +58,74 @@ export const loadInitialAppState = () => {
       streak = 0;
     }
   }
-
+  
   return {
-    habits,
-    dailyTarget,
-    history,
+    ...profileState,
     streak,
-    lastActive,
-    todayStr,
+    lastActive
   };
 };
 
-export const saveAppState = (state) => {
-  saveStoredHabits(state.habits);
-  saveStoredTarget(state.dailyTarget);
-  saveStoredHistory(state.history);
-  localStorage.setItem(STORAGE_KEYS.STREAK, state.streak.toString());
-  localStorage.setItem(STORAGE_KEYS.LAST_ACTIVE, state.lastActive);
+// Fetch full DB from the server middleware or static db.json fallback
+export const fetchServerDb = async () => {
+  try {
+    const response = await fetch('/api/db');
+    if (response.ok) {
+      const db = await response.json();
+      return { db, isWritable: true };
+    }
+  } catch (error) {
+    // ignore and fall through
+  }
+
+  try {
+    const response = await fetch('./db.json');
+    if (response.ok) {
+      const db = await response.json();
+      return { db, isWritable: false };
+    }
+  } catch (error) {
+    // ignore
+  }
+
+  return null;
+};
+
+// Save full DB to the server middleware
+export const saveServerDb = async (db) => {
+  try {
+    const response = await fetch('/api/db', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(db, null, 2)
+    });
+    if (!response.ok) throw new Error('Save to server API failed');
+    return true;
+  } catch (error) {
+    console.error('Could not save to server DB:', error.message);
+    return false;
+  }
+};
+
+// LocalStorage Fallbacks
+export const loadInitialDbFromLocalStorage = () => {
+  const data = localStorage.getItem(STORAGE_KEY);
+  if (!data) {
+    const defaultDb = getDefaultDbStructure();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultDb));
+    return defaultDb;
+  }
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    const defaultDb = getDefaultDbStructure();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultDb));
+    return defaultDb;
+  }
+};
+
+export const saveDbToLocalStorage = (db) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
 };

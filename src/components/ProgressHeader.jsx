@@ -1,4 +1,4 @@
-import { Flame, Trophy, BarChart3, Settings, Calendar } from 'lucide-react';
+import { Flame, Trophy, BarChart3, Settings, Calendar, Layers } from 'lucide-react';
 
 export default function ProgressHeader({
   dailyScore,
@@ -6,7 +6,10 @@ export default function ProgressHeader({
   streak,
   onOpenManage,
   currentView,
-  setView
+  setView,
+  profiles = ['default'],
+  currentProfile = 'default',
+  onSwitchProfile
 }) {
   const percentage = Math.min(Math.round((dailyScore / dailyTarget) * 100), 100) || 0;
   const isGoalMet = dailyScore >= dailyTarget;
@@ -25,6 +28,22 @@ export default function ProgressHeader({
         <div className="date-badge">
           <Calendar className="date-icon" size={16} />
           <span>{dateStr}</span>
+        </div>
+
+        <div className="profile-selector-badge">
+          <Layers className="profile-icon" size={15} />
+          <select
+            value={currentProfile}
+            onChange={(e) => onSwitchProfile && onSwitchProfile(e.target.value)}
+            className="header-profile-select"
+            title="Quick Switch Profile"
+          >
+            {profiles.map(name => (
+              <option key={name} value={name}>
+                {name.charAt(0).toUpperCase() + name.slice(1)}
+              </option>
+            ))}
+          </select>
         </div>
         
         <div className="streak-container flex-center">

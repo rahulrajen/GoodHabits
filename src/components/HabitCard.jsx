@@ -1,4 +1,4 @@
-import { Check, Edit2 } from 'lucide-react';
+import { Check, Edit2, GripVertical } from 'lucide-react';
 
 export default function HabitCard({ habit, isCompleted, onToggle, onEdit }) {
   // Determine points color theme based on score weight
@@ -21,6 +21,9 @@ export default function HabitCard({ habit, isCompleted, onToggle, onEdit }) {
       onClick={onToggle}
     >
       <div className="habit-card-left">
+        <div className="drag-handle-wrapper" onClick={(e) => e.stopPropagation()} title="Drag to rearrange">
+          <GripVertical className="drag-handle-icon" size={16} />
+        </div>
         <div className={`habit-checkbox ${isCompleted ? 'checked' : ''}`}>
           {isCompleted && <Check size={16} className="checkmark-icon" />}
         </div>

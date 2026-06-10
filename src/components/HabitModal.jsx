@@ -11,15 +11,21 @@ export default function HabitModal({
   onSaveHabit,
   onDeleteHabit,
   dailyTarget,
-  onSaveTarget
+  onSaveTarget,
+  profiles = ['default'],
+  currentProfile = 'default',
+  onSwitchProfile,
+  onCreateProfile,
+  onDeleteProfile
 }) {
   const [text, setText] = useState(habitToEdit ? habitToEdit.text : '');
   const [points, setPoints] = useState(habitToEdit ? habitToEdit.points : 10);
   const [icon, setIcon] = useState(habitToEdit ? (habitToEdit.icon || '🏃') : '🏃');
   const [category, setCategory] = useState(habitToEdit ? (habitToEdit.category || 'Health') : 'Health');
   const [targetInput, setTargetInput] = useState(dailyTarget);
+  const [newProfileName, setNewProfileName] = useState('');
   
-  // Tab within the modal: 'habit' or 'settings'
+  // Tab within the modal: 'habit', 'settings', or 'profiles'
   const [activeTab, setActiveTab] = useState('habit');
 
   if (!isOpen) return null;
@@ -67,9 +73,15 @@ export default function HabitModal({
           >
             Daily Target Setting
           </button>
+          <button 
+            className={`modal-tab ${activeTab === 'profiles' ? 'active' : ''}`}
+            onClick={() => setActiveTab('profiles')}
+          >
+            Manage Profiles
+          </button>
         </div>
 
-        {activeTab === 'habit' ? (
+        {activeTab === 'habit' && (
           <form onSubmit={handleSubmitHabit} className="modal-form">
             <div className="form-group">
               <label htmlFor="habit-text">Habit Name</label>
@@ -154,7 +166,9 @@ export default function HabitModal({
               </button>
             </div>
           </form>
-        ) : (
+        )}
+
+        {activeTab === 'settings' && (
           <form onSubmit={handleTargetSubmit} className="modal-form">
             <div className="form-group">
               <label htmlFor="target-input">Daily Target Points</label>
@@ -182,6 +196,73 @@ export default function HabitModal({
               </button>
             </div>
           </form>
+        )}
+
+        {activeTab === 'profiles' && (
+          <div className="modal-form">
+            <div className="form-group">
+              <label>Switch Active Profile</label>
+              <select
+                value={currentProfile}
+                onChange={(e) => onSwitchProfile && onSwitchProfile(e.target.value)}
+              >
+                {profiles.map(name => (
+                  <option key={name} value={name}>
+                    {name.charAt(0).toUpperCase() + name.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newProfileName.trim() && onCreateProfile) {
+                  onCreateProfile(newProfileName.trim());
+                  setNewProfileName('');
+                }
+              }} 
+              className="form-group"
+            >
+              <label htmlFor="new-profile-name">Create New Profile</label>
+              <div className="profile-create-row">
+                <input
+                  type="text"
+                  id="new-profile-name"
+                  placeholder="E.g. Work, Personal, Sports..."
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  maxLength={20}
+                  required
+                />
+                <button type="submit" className="btn-primary">
+                  <Plus size={16} />
+                  <span>Create</span>
+                </button>
+              </div>
+            </form>
+
+            {currentProfile !== 'default' && (
+              <div className="form-group delete-profile-section">
+                <label>Danger Zone</label>
+                <p className="form-description">
+                  Deleting this profile wipes all its habits, streaks, and completion history permanently.
+                </p>
+                <button
+                  type="button"
+                  className="btn-danger width-full"
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to permanently delete the profile "${currentProfile}"?`)) {
+                      onDeleteProfile && onDeleteProfile(currentProfile);
+                    }
+                  }}
+                >
+                  <Trash2 size={16} />
+                  <span>Delete Profile: {currentProfile.charAt(0).toUpperCase() + currentProfile.slice(1)}</span>
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

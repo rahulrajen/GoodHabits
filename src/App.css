@@ -836,3 +836,101 @@
     opacity: 1; /* Always visible on mobile since hover doesn't exist */
   }
 }
+
+/* Drag and Drop Styling */
+.draggable-wrapper {
+  position: relative;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.draggable-wrapper.dragging {
+  opacity: 0.35;
+  transform: scale(0.98);
+  cursor: grabbing;
+}
+
+.draggable-wrapper.drag-over {
+  border: 2px dashed var(--accent-indigo);
+  border-radius: 16px;
+  background: rgba(99, 102, 241, 0.04);
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+}
+
+.drag-handle-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: grab;
+  color: var(--text-muted);
+  opacity: 0.5;
+  transition: var(--transition-smooth);
+}
+
+.drag-handle-wrapper:hover {
+  opacity: 1;
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+.drag-handle-wrapper:active {
+  cursor: grabbing;
+}
+
+/* Header Profile Selector Badge */
+.profile-selector-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.02);
+  transition: var(--transition-smooth);
+}
+
+.profile-selector-badge:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.profile-icon {
+  color: var(--accent-purple);
+}
+
+.header-profile-select {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+}
+
+.header-profile-select option,
+.modal-form select option {
+  background-color: #0f1423;
+  color: #f3f4f6;
+  padding: 8px;
+}
+
+/* Profile Modal tab styles */
+.profile-create-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.profile-create-row input {
+  flex: 1;
+}
+
+.delete-profile-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 20px;
+  margin-top: 8px;
+}
