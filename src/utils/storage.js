@@ -162,8 +162,7 @@ export const fetchGithubDb = async (config) => {
   const response = await fetch(url, {
     headers: {
       'Authorization': `token ${token}`,
-      'Accept': 'application/vnd.github.v3+json',
-      'Cache-Control': 'no-cache'
+      'Accept': 'application/vnd.github.v3+json'
     }
   });
 
@@ -191,8 +190,7 @@ export const saveGithubDb = async (config, db, sha) => {
     const checkRes = await fetch(`${url}?ref=${branch}`, {
       headers: {
         'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'Cache-Control': 'no-cache'
+        'Accept': 'application/vnd.github.v3+json'
       }
     });
     if (checkRes.ok) {
