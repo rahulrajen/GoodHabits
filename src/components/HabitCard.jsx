@@ -1,4 +1,4 @@
-import { Check, Edit2 } from 'lucide-react';
+import { Edit2 } from 'lucide-react';
 
 export default function HabitCard({ habit, isCompleted, onToggle, onEdit }) {
   // Determine points color theme based on score weight
@@ -21,9 +21,6 @@ export default function HabitCard({ habit, isCompleted, onToggle, onEdit }) {
       onClick={onToggle}
     >
       <div className="habit-card-left">
-        <div className={`habit-checkbox ${isCompleted ? 'checked' : ''}`}>
-          {isCompleted && <Check size={16} className="checkmark-icon" />}
-        </div>
         <div className="habit-icon-wrapper">
           <span className="habit-emoji-icon">{habit.icon || '✨'}</span>
         </div>

@@ -850,41 +850,63 @@
 
 /* Specific Header Media Query for mobile screen sizes (no horizontal overflow) */
 @media (max-width: 520px) {
+  .progress-header {
+    padding: 16px 12px; /* Reduce container padding to free up space */
+  }
+
   .header-top {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Strict 2-column grid to prevent overflow */
+    gap: 12px 8px;
+    align-items: center;
+    margin-bottom: 16px;
   }
   
   .date-badge {
-    order: 1;
-    flex: 1 1 45%;
-    justify-content: flex-start;
+    grid-column: 1;
+    grid-row: 1;
+    padding: 4px 8px; /* Compact padding */
+    font-size: 12px;
+    width: max-content;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
   
   .streak-container {
-    order: 2;
-    flex: 1 1 45%;
-    justify-content: flex-end;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    font-size: 12px;
+    white-space: nowrap;
   }
   
   .profile-selector-badge {
-    order: 3;
-    flex: 1 1 45%;
-    justify-content: flex-start;
-    width: fit-content;
+    grid-column: 1;
+    grid-row: 2;
+    padding: 4px 8px; /* Compact padding */
+    font-size: 12px;
+    width: max-content;
+    max-width: 100%;
+    overflow: hidden;
   }
   
   .header-actions {
-    order: 4;
-    flex: 1 1 45%;
-    justify-content: flex-end;
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+    gap: 6px;
+  }
+
+  .icon-only-btn {
+    width: 32px; /* Smaller action buttons on mobile */
+    height: 32px;
   }
   
   .header-profile-select {
-    max-width: 90px;
-    text-overflow: ellipsis;
+    max-width: 75px; /* Strict capping of profile name text */
+    font-size: 12px;
   }
 
   .stats-grid {
