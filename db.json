@@ -97,7 +97,9 @@
           "target": 35
         },
         "2026-06-13": {
-          "loggedHabits": [],
+          "loggedHabits": [
+            "4"
+          ],
           "target": 35
         }
       },
