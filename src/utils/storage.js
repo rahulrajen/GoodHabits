@@ -157,7 +157,7 @@ export const saveGithubConfigOverride = (override) => {
 
 export const fetchGithubDb = async (config) => {
   const { owner, repo, branch, path, token } = config;
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}&_t=${Date.now()}`;
 
   const response = await fetch(url, {
     headers: {
@@ -187,7 +187,7 @@ export const saveGithubDb = async (config, db, sha) => {
   // Fetch the latest SHA immediately before write to avoid conflict
   let currentSha = sha;
   try {
-    const checkRes = await fetch(`${url}?ref=${branch}`, {
+    const checkRes = await fetch(`${url}?ref=${branch}&_t=${Date.now()}`, {
       headers: {
         'Authorization': `token ${token}`,
         'Accept': 'application/vnd.github.v3+json'
