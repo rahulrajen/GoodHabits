@@ -95,10 +95,66 @@
             "3"
           ],
           "target": 35
+        },
+        "2026-06-13": {
+          "loggedHabits": [
+            "1"
+          ],
+          "target": 35
         }
       },
       "streak": 0,
       "lastActive": ""
+    },
+    "ragul": {
+      "habits": [
+        {
+          "id": "1",
+          "text": "Hydrate (Drink 2L Water)",
+          "points": 5,
+          "icon": "💧",
+          "category": "Health"
+        },
+        {
+          "id": "2",
+          "text": "Read 10 Pages of a Book",
+          "points": 10,
+          "icon": "📚",
+          "category": "Mind"
+        },
+        {
+          "id": "3",
+          "text": "30-minute Workout",
+          "points": 15,
+          "icon": "💪",
+          "category": "Fitness"
+        },
+        {
+          "id": "4",
+          "text": "10-minute Meditation",
+          "points": 10,
+          "icon": "🧘",
+          "category": "Mind"
+        },
+        {
+          "id": "5",
+          "text": "Eat a Healthy Meal",
+          "points": 10,
+          "icon": "🥗",
+          "category": "Health"
+        }
+      ],
+      "dailyTarget": 35,
+      "history": {
+        "2026-06-13": {
+          "loggedHabits": [
+            "4"
+          ],
+          "target": 35
+        }
+      },
+      "streak": 0,
+      "lastActive": "2026-06-13"
     }
   },
   "currentProfile": "work"
