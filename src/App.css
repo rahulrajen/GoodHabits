@@ -247,6 +247,7 @@
   align-items: center;
   gap: 16px;
   flex: 1;
+  min-width: 0; /* Enable shrinking to wrap text */
 }
 
 .habit-checkbox {
@@ -258,6 +259,7 @@
   align-items: center;
   justify-content: center;
   transition: var(--transition-smooth);
+  flex-shrink: 0; /* Keep checkbox same size */
 }
 
 .habit-checkbox.checked {
@@ -279,6 +281,7 @@
   justify-content: center;
   font-size: 22px;
   border: 1px solid rgba(255, 255, 255, 0.02);
+  flex-shrink: 0; /* Keep icon same size */
 }
 
 .habit-card.completed .habit-icon-wrapper {
@@ -289,6 +292,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0; /* Enable shrinking to wrap text */
 }
 
 .habit-text {
@@ -296,6 +301,9 @@
   font-weight: 600;
   color: var(--text-primary);
   transition: var(--transition-smooth);
+  word-break: break-word; /* Wrap slash characters and long words */
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 .habit-card.completed .habit-text {
@@ -314,6 +322,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0; /* Never allow points or edit button to get squished or pushed out */
 }
 
 .points-badge {
@@ -438,8 +447,8 @@
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  right: 0;
+  bottom: 0;
   background: rgba(5, 7, 13, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -447,7 +456,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
 }
 
 .modal-content {
@@ -458,6 +467,8 @@
   box-shadow: var(--shadow-lg);
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(15, 20, 35, 0.9);
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .close-btn {
@@ -837,10 +848,67 @@
   }
 }
 
+/* Specific Header Media Query for mobile screen sizes (no horizontal overflow) */
+@media (max-width: 520px) {
+  .header-top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+  }
+  
+  .date-badge {
+    order: 1;
+    flex: 1 1 45%;
+    justify-content: flex-start;
+  }
+  
+  .streak-container {
+    order: 2;
+    flex: 1 1 45%;
+    justify-content: flex-end;
+  }
+  
+  .profile-selector-badge {
+    order: 3;
+    flex: 1 1 45%;
+    justify-content: flex-start;
+    width: fit-content;
+  }
+  
+  .header-actions {
+    order: 4;
+    flex: 1 1 45%;
+    justify-content: flex-end;
+  }
+  
+  .header-profile-select {
+    max-width: 90px;
+    text-overflow: ellipsis;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-content {
+    padding: 24px 16px;
+  }
+}
+
 /* Drag and Drop Styling */
 .draggable-wrapper {
   position: relative;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.draggable-wrapper.ready-to-drag {
+  cursor: grabbing;
+  transform: scale(1.025);
+  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.25);
+  z-index: 10;
 }
 
 .draggable-wrapper.dragging {
@@ -854,27 +922,6 @@
   border-radius: 16px;
   background: rgba(99, 102, 241, 0.04);
   box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
-}
-
-.drag-handle-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  cursor: grab;
-  color: var(--text-muted);
-  opacity: 0.5;
-  transition: var(--transition-smooth);
-}
-
-.drag-handle-wrapper:hover {
-  opacity: 1;
-  color: var(--text-primary);
-  transform: scale(1.1);
-}
-
-.drag-handle-wrapper:active {
-  cursor: grabbing;
 }
 
 /* Header Profile Selector Badge */
@@ -933,4 +980,40 @@
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 20px;
   margin-top: 8px;
+}
+
+/* Sync CSS classes */
+.sync-status-indicator {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.sync-status-indicator.connected {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--accent-emerald);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.sync-status-indicator.offline {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--accent-amber);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.sync-error-banner {
+  background: rgba(244, 63, 94, 0.1);
+  color: var(--accent-rose);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import {
   DEFAULT_HABITS,
@@ -6,7 +6,11 @@ import {
   fetchServerDb,
   saveServerDb,
   loadInitialDbFromLocalStorage,
-  saveDbToLocalStorage
+  saveDbToLocalStorage,
+  getGithubConfig,
+  saveGithubConfigOverride,
+  fetchGithubDb,
+  saveGithubDb
 } from './utils/storage';
 import ProgressHeader from './components/ProgressHeader';
 import HabitCard from './components/HabitCard';
@@ -26,34 +30,71 @@ export default function App() {
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
+  // GitHub Sync States
+  const [isUsingGithub, setIsUsingGithub] = useState(false);
+  const [githubConfig, setGithubConfigState] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const dbShaRef = useRef(null);
+
+  // Drag and drop long-press states
+  const [draggableIndex, setDraggableIndex] = useState(null);
+  const pressTimerRef = useRef(null);
+  const isLongPressActiveRef = useRef(false);
+  const touchDragStartedRef = useRef(false);
+  const startTouchYRef = useRef(0);
+
   // Initialize DB asynchronously
   useEffect(() => {
     const initDb = async () => {
-      // 1. Check if we already have local storage edits
-      const localData = localStorage.getItem('good_habits_db');
-      if (localData) {
-        const loadedDb = loadInitialDbFromLocalStorage();
-        setIsUsingServer(false);
-        setDb(loadedDb);
-        return;
+      const gitConfig = getGithubConfig();
+      setGithubConfigState(gitConfig);
+
+      let loadedDb = null;
+      let loadedSha = null;
+      let usingGit = false;
+
+      // 1. Try loading from GitHub if credentials exist
+      if (gitConfig) {
+        setIsSyncing(true);
+        try {
+          const res = await fetchGithubDb(gitConfig);
+          loadedDb = res.db;
+          loadedSha = res.sha;
+          dbShaRef.current = res.sha;
+          usingGit = true;
+          setIsUsingGithub(true);
+          setSyncError(null);
+        } catch (err) {
+          console.error("Failed to load from GitHub, falling back to local:", err.message);
+          setSyncError(`GitHub Sync failed: ${err.message}`);
+        } finally {
+          setIsSyncing(false);
+        }
       }
 
-      // 2. No local storage, try loading from server API or static db.json seed
-      const serverResult = await fetchServerDb();
-      let loadedDb;
-      
-      if (serverResult) {
-        loadedDb = serverResult.db;
-        setIsUsingServer(serverResult.isWritable);
-        // If it's a static fetch (not writable API), populate localStorage with it
-        if (!serverResult.isWritable) {
-          saveDbToLocalStorage(loadedDb);
+      // 2. If GitHub config was not active or failed, check local storage/server fallback
+      if (!loadedDb) {
+        const localData = localStorage.getItem('good_habits_db');
+        if (localData) {
+          loadedDb = loadInitialDbFromLocalStorage();
+          setIsUsingServer(false);
+        } else {
+          const serverResult = await fetchServerDb();
+          if (serverResult) {
+            loadedDb = serverResult.db;
+            setIsUsingServer(serverResult.isWritable);
+            if (!serverResult.isWritable) {
+              saveDbToLocalStorage(loadedDb);
+            }
+          } else {
+            loadedDb = loadInitialDbFromLocalStorage();
+            setIsUsingServer(false);
+          }
         }
-      } else {
-        loadedDb = loadInitialDbFromLocalStorage();
-        setIsUsingServer(false);
       }
-      
+
+      // Ensure profile consistency
       const current = loadedDb.currentProfile || 'default';
       if (!loadedDb.profiles[current]) {
         loadedDb.profiles[current] = {
@@ -65,6 +106,20 @@ export default function App() {
         };
       }
       loadedDb.profiles[current] = checkProfileStreak(loadedDb.profiles[current]);
+      
+      // Update local storage backup/cache
+      saveDbToLocalStorage(loadedDb);
+      
+      // If we are connected to GitHub, and local Vite dev server is running,
+      // let's also POST the retrieved DB to the server to update the local db.json file
+      if (usingGit) {
+        try {
+          await saveServerDb(loadedDb);
+        } catch (e) {
+          // ignore
+        }
+      }
+
       setDb(loadedDb);
     };
     initDb();
@@ -73,12 +128,83 @@ export default function App() {
   // Save DB when changed
   useEffect(() => {
     if (!db) return;
-    if (isUsingServer) {
-      saveServerDb(db);
-    } else {
-      saveDbToLocalStorage(db);
-    }
-  }, [db, isUsingServer]);
+    
+    // Always backup to localStorage
+    saveDbToLocalStorage(db);
+
+    const saveChanges = async () => {
+      // Save to local Vite dev server if running
+      if (isUsingServer) {
+        await saveServerDb(db);
+      }
+
+      // Save to GitHub if active
+      if (isUsingGithub) {
+        const gitConfig = getGithubConfig();
+        if (gitConfig) {
+          try {
+            const newSha = await saveGithubDb(gitConfig, db, dbShaRef.current);
+            dbShaRef.current = newSha;
+            setSyncError(null);
+          } catch (err) {
+            console.error("Failed to sync to GitHub:", err.message);
+            setSyncError(`GitHub Sync failed: ${err.message}`);
+          }
+        }
+      }
+    };
+    saveChanges();
+  }, [db, isUsingServer, isUsingGithub]);
+
+  // Automatic sync-on-focus / visibility change
+  useEffect(() => {
+    if (!isUsingGithub) return;
+
+    const handleFocusSync = async () => {
+      const gitConfig = getGithubConfig();
+      if (!gitConfig || isSyncing) return;
+
+      setIsSyncing(true);
+      try {
+        const res = await fetchGithubDb(gitConfig);
+        // Compare with stringified local state to avoid unnecessary redraws
+        const localStr = JSON.stringify(db);
+        const remoteStr = JSON.stringify(res.db);
+        
+        if (localStr !== remoteStr) {
+          const current = res.db.currentProfile || 'default';
+          res.db.profiles[current] = checkProfileStreak(res.db.profiles[current]);
+          
+          setDb(res.db);
+          dbShaRef.current = res.sha;
+          saveDbToLocalStorage(res.db);
+          
+          if (isUsingServer) {
+            await saveServerDb(res.db);
+          }
+        }
+        setSyncError(null);
+      } catch (err) {
+        console.warn("Auto-sync failed on focus:", err.message);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleFocusSync();
+      }
+    };
+
+    window.addEventListener('focus', handleFocusSync);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocusSync);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [isUsingGithub, db, isUsingServer, isSyncing]);
 
   // Handle celebration timeout
   useEffect(() => {
@@ -89,6 +215,12 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [celebrate]);
+
+  // GitHub sync details saver
+  const handleSaveGithubOverride = (overrideConfig) => {
+    saveGithubConfigOverride(overrideConfig);
+    window.location.reload();
+  };
 
   if (!db) {
     return (
@@ -184,6 +316,99 @@ export default function App() {
   const todayLoggedHabits = todayLog.loggedHabits;
   const todayScore = calculateScore(todayLoggedHabits);
 
+  // Touch/Mouse event handlers for drag-and-drop
+  const clearLongPressTimer = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  const handleMouseDown = (e, index) => {
+    if (e.target.closest('button') || e.target.closest('select') || e.target.closest('.habit-checkbox') || e.target.closest('.edit-habit-btn')) {
+      return;
+    }
+    clearLongPressTimer();
+    isLongPressActiveRef.current = false;
+    
+    pressTimerRef.current = setTimeout(() => {
+      isLongPressActiveRef.current = true;
+      setDraggableIndex(index);
+      if (window.navigator?.vibrate) {
+        window.navigator.vibrate(40);
+      }
+    }, 350);
+  };
+
+  const handleMouseUp = (e, habitId) => {
+    clearLongPressTimer();
+    if (!isLongPressActiveRef.current && !e.target.closest('button') && !e.target.closest('.edit-habit-btn')) {
+      // only toggle if we didn't trigger long press and not clicking buttons
+      handleToggleHabit(habitId);
+    }
+    setDraggableIndex(null);
+  };
+
+  const handleMouseLeave = () => {
+    clearLongPressTimer();
+    setDraggableIndex(null);
+  };
+
+  const handleTouchStart = (e, index) => {
+    if (e.target.closest('button') || e.target.closest('select') || e.target.closest('.habit-checkbox') || e.target.closest('.edit-habit-btn')) {
+      return;
+    }
+    clearLongPressTimer();
+    isLongPressActiveRef.current = false;
+    touchDragStartedRef.current = false;
+    startTouchYRef.current = e.touches[0].pageY;
+
+    pressTimerRef.current = setTimeout(() => {
+      isLongPressActiveRef.current = true;
+      touchDragStartedRef.current = true;
+      setDraggedIndex(index);
+      if (window.navigator?.vibrate) {
+        window.navigator.vibrate(40);
+      }
+    }, 350);
+  };
+
+  const handleTouchMove = (e) => {
+    if (touchDragStartedRef.current) {
+      e.preventDefault(); // Prevent scrolling during drag
+      const touch = e.touches[0];
+      const element = document.elementFromPoint(touch.clientX, touch.clientY);
+      const wrapper = element?.closest('.draggable-wrapper');
+      
+      if (wrapper) {
+        const overIndex = parseInt(wrapper.getAttribute('data-index'), 10);
+        if (!isNaN(overIndex) && overIndex !== draggedIndex) {
+          setDragOverIndex(overIndex);
+        }
+      }
+    } else {
+      const touch = e.touches[0];
+      if (Math.abs(touch.pageY - startTouchYRef.current) > 10) {
+        clearLongPressTimer();
+      }
+    }
+  };
+
+  const handleTouchEnd = (e, habitId) => {
+    clearLongPressTimer();
+    if (touchDragStartedRef.current) {
+      if (dragOverIndex !== null && dragOverIndex !== draggedIndex) {
+        handleDrop(null, dragOverIndex);
+      } else {
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+      }
+      touchDragStartedRef.current = false;
+    } else if (!isLongPressActiveRef.current && !e.target.closest('button') && !e.target.closest('.edit-habit-btn')) {
+      handleToggleHabit(habitId);
+    }
+  };
+
   // Drag and Drop Handlers
   const handleDragStart = (e, index) => {
     setDraggedIndex(index);
@@ -204,15 +429,17 @@ export default function App() {
   const handleDragEnd = () => {
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setDraggableIndex(null);
   };
 
   const handleDrop = (e, targetIndex) => {
-    e.preventDefault();
-    const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (e) e.preventDefault();
+    const sourceIndex = e ? parseInt(e.dataTransfer.getData('text/plain'), 10) : draggedIndex;
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setDraggableIndex(null);
 
-    if (sourceIndex === targetIndex || isNaN(sourceIndex)) return;
+    if (sourceIndex === targetIndex || isNaN(sourceIndex) || sourceIndex === null || targetIndex === null) return;
 
     const completedHabits = habits.filter(h => todayLoggedHabits.includes(h.id));
     const uncompletedHabits = habits.filter(h => !todayLoggedHabits.includes(h.id));
@@ -452,8 +679,14 @@ export default function App() {
           <main className="dashboard-view fade-in">
             <div className="section-header">
               <h2 className="section-title">Today's Habits</h2>
-              <p className="section-subtitle">Grip handle to rearrange. Tap card to toggle status.</p>
+              <p className="section-subtitle">Press & hold cards to drag and rearrange. Tap cards to toggle status.</p>
             </div>
+
+            {syncError && (
+              <div className="sync-error-banner glass-card">
+                <span>⚠️ {syncError}</span>
+              </div>
+            )}
 
             <div className="habits-grid">
               {habits.length === 0 ? (
@@ -468,18 +701,25 @@ export default function App() {
                 displayHabits.map((habit, index) => (
                   <div
                     key={habit.id}
-                    draggable
+                    data-index={index}
+                    draggable={draggableIndex === index}
                     onDragStart={(e) => handleDragStart(e, index)}
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDragLeave={handleDragLeave}
                     onDragEnd={handleDragEnd}
                     onDrop={(e) => handleDrop(e, index)}
-                    className={`draggable-wrapper ${draggedIndex === index ? 'dragging' : ''} ${dragOverIndex === index ? 'drag-over' : ''}`}
+                    onMouseDown={(e) => handleMouseDown(e, index)}
+                    onMouseUp={(e) => handleMouseUp(e, habit.id)}
+                    onMouseLeave={handleMouseLeave}
+                    onTouchStart={(e) => handleTouchStart(e, index)}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={(e) => handleTouchEnd(e, habit.id)}
+                    className={`draggable-wrapper ${draggedIndex === index ? 'dragging' : ''} ${dragOverIndex === index ? 'drag-over' : ''} ${draggableIndex === index ? 'ready-to-drag' : ''}`}
                   >
                     <HabitCard
                       habit={habit}
                       isCompleted={todayLoggedHabits.includes(habit.id)}
-                      onToggle={() => handleToggleHabit(habit.id)}
+                      onToggle={null} // Toggling handled by mouse/touch long press handlers on the wrapper
                       onEdit={handleOpenEdit}
                     />
                   </div>
@@ -524,6 +764,10 @@ export default function App() {
           onSwitchProfile={handleSwitchProfile}
           onCreateProfile={handleCreateProfile}
           onDeleteProfile={handleDeleteProfile}
+          isUsingGithub={isUsingGithub}
+          syncError={syncError}
+          githubConfig={githubConfig}
+          onSaveGithubOverride={handleSaveGithubOverride}
         />
       )}
     </div>

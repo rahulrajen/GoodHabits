@@ -109,6 +109,124 @@ export const saveServerDb = async (db) => {
   }
 };
 
+import { GITHUB_CONFIG } from '../config';
+
+export const GITHUB_OVERRIDE_KEY = 'good_habits_github_override';
+
+export const getGithubConfig = () => {
+  let localOverride = null;
+  try {
+    const data = localStorage.getItem(GITHUB_OVERRIDE_KEY);
+    if (data) localOverride = JSON.parse(data);
+  } catch (e) {
+    // ignore
+  }
+
+  const baseConfig = localOverride || GITHUB_CONFIG;
+  if (!baseConfig || !baseConfig.owner || !baseConfig.repo || !baseConfig.token) return null;
+
+  let token = baseConfig.token.trim();
+  // Decode base64 tokens automatically if they do not start with GitHub token prefixes
+  if (token && !token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+    try {
+      token = atob(token);
+    } catch (e) {
+      // Ignore and use original if not valid base64
+    }
+  }
+
+  return {
+    ...baseConfig,
+    token
+  };
+};
+
+export const saveGithubConfigOverride = (override) => {
+  if (!override) {
+    localStorage.removeItem(GITHUB_OVERRIDE_KEY);
+  } else {
+    localStorage.setItem(GITHUB_OVERRIDE_KEY, JSON.stringify(override));
+  }
+};
+
+export const fetchGithubDb = async (config) => {
+  const { owner, repo, branch, path, token } = config;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `token ${token}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Cache-Control': 'no-cache'
+    }
+  });
+
+  if (response.status === 404) {
+    return { db: getDefaultDbStructure(), sha: null };
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub fetch failed: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const decodedContent = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
+  const db = JSON.parse(decodedContent);
+  return { db, sha: data.sha };
+};
+
+export const saveGithubDb = async (config, db, sha) => {
+  const { owner, repo, branch, path, token } = config;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+  // Fetch the latest SHA immediately before write to avoid conflict
+  let currentSha = sha;
+  try {
+    const checkRes = await fetch(`${url}?ref=${branch}`, {
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    if (checkRes.ok) {
+      const fileInfo = await checkRes.json();
+      currentSha = fileInfo.sha;
+    }
+  } catch (e) {
+    console.warn("Could not fetch fresh SHA before write, using cached:", e);
+  }
+
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(db, null, 2))));
+  const body = {
+    message: 'Sync habits data [skip ci]',
+    content,
+    branch
+  };
+
+  if (currentSha) {
+    body.sha = currentSha;
+  }
+
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `token ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/vnd.github.v3+json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || `GitHub save failed: ${response.statusText}`);
+  }
+
+  const resData = await response.json();
+  return resData.content.sha;
+};
+
 // LocalStorage Fallbacks
 export const loadInitialDbFromLocalStorage = () => {
   const data = localStorage.getItem(STORAGE_KEY);
