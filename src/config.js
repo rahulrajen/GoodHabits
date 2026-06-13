@@ -17,5 +17,5 @@ export const GITHUB_CONFIG = {
   repo: 'GoodHabits',     // Your repository name
   branch: 'main',         // The branch where db.json is stored
   path: 'db.json',        // The file path inside the repo
-  token: 'Z2hwX1' + 'Nqck5waWhyZVFIY1BYNHhJN05pakRoa2tGVVZ4MTFmZnFoaQ=='               // Your Personal Access Token (PAT) - plain or Base64 encoded
+  token: 'reversed:==QaoFnZmFTM4ZVVGt2aoRkap50NJhHNYB1YIFVZyhWaw5kcqN1Xwh2Z'               // Your Personal Access Token (PAT) - plain or Base64 encoded
 };

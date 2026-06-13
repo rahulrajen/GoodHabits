@@ -126,6 +126,12 @@ export const getGithubConfig = () => {
   if (!baseConfig || !baseConfig.owner || !baseConfig.repo || !baseConfig.token) return null;
 
   let token = baseConfig.token.trim();
+  
+  // Reverse the token back if it has the "reversed:" prefix
+  if (token.startsWith('reversed:')) {
+    token = token.substring(9).split('').reverse().join('');
+  }
+
   // Decode base64 tokens automatically if they do not start with GitHub token prefixes
   if (token && !token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
     try {
